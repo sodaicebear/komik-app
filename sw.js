@@ -1,7 +1,10 @@
-const CACHE = "komik-v4";
+const CACHE = "komik-v5";
 const ASSETS = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest", "icon.png"];
+// GitHub Pages lets browsers reuse files for ~10 minutes; bypass that so updates show up right away.
+const fresh = (url) => new Request(url, { cache: "no-cache" });
+
 self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS.map(fresh))).then(() => self.skipWaiting()));
 });
 self.addEventListener("activate", (e) => {
   e.waitUntil(
@@ -9,10 +12,10 @@ self.addEventListener("activate", (e) => {
   );
 });
 self.addEventListener("fetch", (e) => {
-  if (e.request.method !== "GET") return;
+  if (e.request.method !== "GET" || new URL(e.request.url).origin !== location.origin) return;
   e.respondWith(
-    fetch(e.request)
-      .then((r) => { const c = r.clone(); caches.open(CACHE).then((x) => x.put(e.request, c)); return r; })
-      .catch(() => caches.match(e.request))
+    fetch(fresh(e.request.url))
+      .then((r) => { if (r.ok) { const c = r.clone(); caches.open(CACHE).then((x) => x.put(e.request, c)); } return r; })
+      .catch(() => caches.match(e.request, { ignoreSearch: true }))
   );
 });
