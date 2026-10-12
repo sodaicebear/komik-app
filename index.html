@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Komik">
+<meta name="theme-color" content="#0b0b0d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="stylesheet" href="style.css">
+<title>Komik</title>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4v16M3 16l4 4 4-4M17 20V4M13 8l4-4 4 4"/></symbol>
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+  <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5a2 2 0 0 1 2-2h13v16H6a2 2 0 0 0-2 2z"/><path d="M4 21V5"/></symbol>
+  <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4.5L6 21z"/></symbol>
+  <symbol id="i-sliders" viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></symbol>
+</svg>
+
+<!-- ============ LIBRARY ============ -->
+<div id="lib-view">
+  <header id="bar">
+    <div>
+      <h1>Komik</h1>
+      <p id="count"></p>
+    </div>
+    <div class="actions">
+      <button id="sort" class="icon" aria-label="Urutkan"><svg><use href="#i-sort"/></svg></button>
+      <button id="add" class="icon accent" aria-label="Impor CBZ"><svg><use href="#i-plus"/></svg></button>
+    </div>
+    <input id="file" type="file" accept=".cbz,.zip,application/zip,application/x-cbz" multiple hidden>
+  </header>
+
+  <main id="library">
+    <label class="search">
+      <svg><use href="#i-search"/></svg>
+      <input id="q" type="search" placeholder="Cari seri atau kategori" autocomplete="off" enterkeyhint="search">
+      <button id="q-clear" class="icon sm" aria-label="Hapus pencarian" hidden><svg><use href="#i-x"/></svg></button>
+    </label>
+    <nav id="cats"></nav>
+
+    <section id="continue" hidden>
+      <h2>Lanjutkan membaca</h2>
+      <div id="cont-row" class="row-scroll"></div>
+    </section>
+
+    <section>
+      <h2 id="grid-title">Koleksi</h2>
+      <div id="grid"></div>
+    </section>
+
+    <div id="empty" hidden>
+      <svg><use href="#i-book"/></svg>
+      <h3>Rak masih kosong</h3>
+      <p>Impor file CBZ dari app Files. Issue dari seri yang sama otomatis dikelompokkan.</p>
+      <button id="empty-add" class="primary">Impor CBZ</button>
+      <button id="empty-sample" class="link" style="display:block;margin:14px auto 0">Coba dengan sampel</button>
+    </div>
+    <p id="nores" hidden>Tidak ada yang cocok.</p>
+  </main>
+</div>
+
+<!-- ============ SERIES DETAIL ============ -->
+<section id="detail" hidden>
+  <div class="dbar">
+    <button id="d-back" class="icon" aria-label="Kembali"><svg><use href="#i-back"/></svg></button>
+    <span id="d-bartitle"></span>
+    <button id="d-more" class="icon" aria-label="Edit seri"><svg><use href="#i-more"/></svg></button>
+  </div>
+  <div class="hero">
+    <img id="d-cover" alt="">
+    <div class="hero-txt">
+      <h1 id="d-title"></h1>
+      <p id="d-meta"></p>
+      <div id="d-stars" class="stars" aria-label="Rating"></div>
+    </div>
+  </div>
+  <button id="d-read" class="primary wide"></button>
+  <div id="d-tags"></div>
+  <p id="d-desc"></p>
+  <button id="d-desc-more" hidden>Selengkapnya</button>
+  <h2 id="d-issues-title"></h2>
+  <div id="d-issues"></div>
+</section>
+
+<!-- ============ READER ============ -->
+<section id="reader" hidden>
+  <div id="pages"></div>
+  <div id="dim"></div>
+  <div id="endcard" hidden>
+    <div class="box">
+      <svg class="big"><use href="#i-check"/></svg>
+      <h3 id="end-title"></h3>
+      <p id="end-sub"></p>
+      <button id="end-next" class="primary"></button>
+      <button id="end-back" class="ghost">Kembali ke seri</button>
+    </div>
+  </div>
+  <div id="top" class="hud">
+    <button id="back" class="icon" aria-label="Kembali"><svg><use href="#i-back"/></svg></button>
+    <div class="issue-nav">
+      <button id="prev-iss" class="icon sm2" aria-label="Issue sebelumnya"><svg><use href="#i-back"/></svg></button>
+      <button id="r-titlebtn" aria-label="Pilih issue"><small id="r-series"></small><b id="r-issue"></b></button>
+      <button id="next-iss" class="icon sm2" aria-label="Issue berikutnya"><svg><use href="#i-next"/></svg></button>
+    </div>
+    <button id="bm" class="icon" aria-label="Bookmark halaman"><svg><use href="#i-bookmark"/></svg></button>
+    <button id="gear" class="icon" aria-label="Pengaturan"><svg><use href="#i-sliders"/></svg></button>
+  </div>
+  <div id="bottom" class="hud">
+    <button id="thumbs-btn" class="icon" aria-label="Semua halaman"><svg><use href="#i-grid"/></svg></button>
+    <input id="slider" type="range" min="1" value="1" aria-label="Halaman">
+    <span id="pos"></span>
+    <button id="readbtn" class="icon" aria-label="Tandai selesai"><svg><use href="#i-check"/></svg></button>
+  </div>
+</section>
+
+<!-- ============ SHEETS ============ -->
+<div id="sheet" class="overlay" hidden>
+  <div class="card">
+    <div class="grab"></div>
+    <h3>Edit seri</h3>
+    <label>Judul seri <input id="sh-title"></label>
+    <label>Kategori <input id="sh-cat" placeholder="mis. Aksi"></label>
+    <div id="sh-chips"></div>
+    <label>Sinopsis <textarea id="sh-desc" rows="4" placeholder="Opsional"></textarea></label>
+    <div class="row">
+      <button id="sh-del" class="danger">Hapus seri</button>
+      <button id="sh-save" class="primary">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<div id="isheet" class="overlay" hidden>
+  <div class="card">
+    <div class="grab"></div>
+    <h3 id="is-title"></h3>
+    <button id="is-done" class="ghost"></button>
+    <button id="is-del" class="ghost danger-txt">Hapus issue ini</button>
+  </div>
+</div>
+
+<div id="sortmenu" class="overlay" hidden>
+  <div class="card">
+    <div class="grab"></div>
+    <h3>Urutkan</h3>
+    <button data-s="added">Baru ditambahkan</button>
+    <button data-s="read">Terakhir dibaca</button>
+    <button data-s="title">Judul A–Z</button>
+  </div>
+</div>
+
+<div id="settings" class="overlay" hidden>
+  <div class="card">
+    <div class="sheet-head"><h3>Pengaturan baca</h3><button id="set-done" class="link">Selesai</button></div>
+    <div id="set-body"></div>
+    <div class="opt-l">Kecerahan <span id="bright-val"></span></div>
+    <input id="bright" type="range" min="20" max="100" step="5">
+  </div>
+</div>
+
+<div id="thumbs" class="overlay" hidden>
+  <div class="card tall">
+    <div class="sheet-head">
+      <h3 id="th-title">Halaman</h3>
+      <div class="seg mini"><button data-f="all" class="on">Semua</button><button data-f="bm">Bookmark</button></div>
+    </div>
+    <div id="tgrid" class="tgrid"></div>
+  </div>
+</div>
+
+<div id="picker" class="overlay" hidden>
+  <div class="card tall">
+    <div class="sheet-head"><h3 id="pk-title"></h3><button id="pk-close" class="link">Tutup</button></div>
+    <div id="pk-list" class="scroll-y"></div>
+  </div>
+</div>
+
+<div id="toast" hidden></div>
+
+<script src="app.js"></script>
+</body>
+</html>
