@@ -123,31 +123,45 @@ async function inflate(bytes) {
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
-async function readZip(buf) {
-  const v = new DataView(buf), u8 = new Uint8Array(buf), td = new TextDecoder();
-  let e = buf.byteLength - 22;
-  while (e >= 0 && v.getUint32(e, true) !== 0x06054b50) e--;
-  if (e < 0) throw new Error("bukan file CBZ yang valid");
-  const n = v.getUint16(e + 10, true);
-  let p = v.getUint32(e + 16, true);
+/* Reads only the bytes it needs via File.slice(), so big CBZ files don't have to fit in memory at once. */
+async function readZip(file) {
+  const bytes = async (from, to) => new Uint8Array(await file.slice(from, to).arrayBuffer());
+  const head = await bytes(0, 8);
+  const magic = String.fromCharCode(...head.subarray(0, 4));
+  if (magic === "Rar!") throw new Error("isinya ternyata RAR (CBR), hanya namanya yang .cbz. Ubah ke CBZ dulu: ekstrak, kompres jadi ZIP, lalu ganti ekstensinya ke .cbz.");
+  if (head[0] === 0x37 && head[1] === 0x7a) throw new Error("isinya ternyata 7-Zip (CB7), bukan ZIP.");
+  const tailLen = Math.min(file.size, 65557);
+  const tail = await bytes(file.size - tailLen, file.size);
+  const tv = new DataView(tail.buffer);
+  let e = tailLen - 22;
+  while (e >= 0 && tv.getUint32(e, true) !== 0x06054b50) e--;
+  if (e < 0) throw new Error("bukan file CBZ/ZIP yang valid (mungkin rusak atau belum selesai diunduh).");
+  const n = tv.getUint16(e + 10, true), cdSize = tv.getUint32(e + 12, true), cdOff = tv.getUint32(e + 16, true);
+  if (n === 0xffff || cdOff === 0xffffffff) throw new Error("file ZIP64 (lebih dari 4 GB) belum didukung.");
+  const cd = await bytes(cdOff, cdOff + cdSize), v = new DataView(cd.buffer), td = new TextDecoder();
   const files = [];
-  for (let i = 0; i < n; i++) {
+  for (let i = 0, p = 0; i < n && p + 46 <= cd.length; i++) {
     const nl = v.getUint16(p + 28, true), xl = v.getUint16(p + 30, true), cl = v.getUint16(p + 32, true);
     files.push({
-      name: td.decode(u8.subarray(p + 46, p + 46 + nl)),
-      method: v.getUint16(p + 10, true), csize: v.getUint32(p + 20, true), off: v.getUint32(p + 42, true),
+      name: td.decode(cd.subarray(p + 46, p + 46 + nl)),
+      method: v.getUint16(p + 10, true), flags: v.getUint16(p + 8, true),
+      csize: v.getUint32(p + 20, true), off: v.getUint32(p + 42, true),
     });
     p += 46 + nl + xl + cl;
   }
-  const read = (f) => {
-    const h = f.off + 30 + v.getUint16(f.off + 26, true) + v.getUint16(f.off + 28, true);
-    const raw = u8.subarray(h, h + f.csize);
+  const read = async (f) => {
+    if (f.flags & 1) throw new Error("file ZIP-nya dikunci dengan password.");
+    if (f.method !== 0 && f.method !== 8) throw new Error(`metode kompresi ZIP #${f.method} belum didukung.`);
+    const lh = new DataView((await bytes(f.off, f.off + 30)).buffer);
+    const h = f.off + 30 + lh.getUint16(26, true) + lh.getUint16(28, true);
+    const raw = await bytes(h, h + f.csize);
     return f.method === 0 ? raw : inflate(raw);
   };
   return { files, read };
 }
 async function importFile(file) {
-  const zip = await readZip(await file.arrayBuffer());
+  if (/\.(cbr|rar)$/i.test(file.name)) throw new Error("format CBR belum didukung. Ubah ke CBZ dulu: ekstrak, kompres jadi ZIP, lalu ganti ekstensinya ke .cbz.");
+  const zip = await readZip(file);
   const imgs = zip.files
     .filter((f) => IMG.test(f.name) && !/(^|\/)(__MACOSX|\.)/.test(f.name))
     .sort((a, b) => natural(a.name, b.name));
@@ -301,7 +315,12 @@ $("file").onchange = async (e) => {
   let ok = 0;
   for (const [i, f] of files.entries()) {
     toast(files.length > 1 ? `Mengimpor ${i + 1}/${files.length}…` : "Mengimpor…", 0);
-    try { await importFile(f); ok++; } catch (err) { alert(`Gagal mengimpor ${f.name}: ${err.message}`); }
+    try { await importFile(f); ok++; } catch (err) {
+      const msg = err?.name === "QuotaExceededError" ? "penyimpanan di iPhone penuh atau file terlalu besar untuk Safari."
+        : err?.name === "NotReadableError" ? "file tidak bisa dibaca. Pastikan sudah terunduh penuh di app Files, bukan hanya ikon awan."
+        : err?.message || String(err);
+      alert(`Gagal mengimpor ${f.name}:\n${msg}`);
+    }
   }
   toast(ok ? `${ok} issue ditambahkan` : "Tidak ada yang diimpor");
   refresh();

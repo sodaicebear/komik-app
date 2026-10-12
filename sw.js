@@ -1,4 +1,4 @@
-const CACHE = "komik-v5";
+const CACHE = "komik-v6";
 const ASSETS = ["./", "index.html", "style.css", "app.js", "manifest.webmanifest", "icon.png"];
 // GitHub Pages lets browsers reuse files for ~10 minutes; bypass that so updates show up right away.
 const fresh = (url) => new Request(url, { cache: "no-cache" });
