@@ -36,7 +36,15 @@ function comicInfo(xml) {
   const g = (t) => doc.getElementsByTagName(t)[0]?.textContent.trim() || "";
   return { series: g("Series"), number: g("Number"), title: g("Title"), summary: g("Summary"), year: g("Year"), publisher: g("Publisher"), genre: g("Genre") };
 }
-const newSeries = (name, extra = {}) => ({ name, cat: "", desc: "", rating: 0, publisher: "", year: "", added: Date.now(), ...extra });
+const newSeries = (name, extra = {}) => ({ name, tags: [], fav: false, desc: "", rating: 0, publisher: "", year: "", added: Date.now(), ...extra });
+/* older records stored a single "cat"; tags[] replaces it */
+function normSeries(x) {
+  if (!Array.isArray(x.tags)) x.tags = x.cat ? [x.cat] : [];
+  delete x.cat;
+  x.fav = !!x.fav;
+  return x;
+}
+const splitTags = (str) => [...new Set(String(str || "").split(/[,;]/).map((t) => t.trim()).filter(Boolean))];
 
 /* ---------- storage: meta (issues), pages (blobs per issue), series ---------- */
 const db = new Promise((ok, fail) => {
@@ -54,7 +62,7 @@ const db = new Promise((ok, fail) => {
         const c = ev.target.result;
         if (!c) return found.forEach((s) => ser.put(s));
         const b = c.value, p = parseName(b.title);
-        if (!found.has(p.series)) found.set(p.series, newSeries(p.series, { cat: b.cat || "", year: p.year }));
+        if (!found.has(p.series)) found.set(p.series, newSeries(p.series, { tags: b.cat ? [b.cat] : [], year: p.year }));
         Object.assign(b, { series: p.series, num: p.num, name: p.name, bookmarks: [] });
         delete b.cat;
         c.update(b);
@@ -80,9 +88,10 @@ async function addIssue(meta, pages, info) {
   const t = (await db).transaction(["meta", "pages", "series"], "readwrite");
   const ss = t.objectStore("series");
   ss.get(meta.series).onsuccess = (e) => {
-    const cur = e.target.result;
+    const cur = e.target.result && normSeries(e.target.result);
     if (!cur) return ss.put(newSeries(meta.series, info));
-    for (const k of ["desc", "publisher", "year", "cat"]) if (!cur[k] && info[k]) cur[k] = info[k];
+    for (const k of ["desc", "publisher", "year"]) if (!cur[k] && info[k]) cur[k] = info[k];
+    if (!cur.tags.length && info.tags.length) cur.tags = info.tags;
     ss.put(cur);
   };
   const q = t.objectStore("meta").add(meta);
@@ -99,9 +108,11 @@ async function renameSeries(rec, newName) {
   const t = (await db).transaction(["meta", "series"], "readwrite");
   const ss = t.objectStore("series");
   ss.get(newName).onsuccess = (e) => {
-    const target = e.target.result;
+    const target = e.target.result && normSeries(e.target.result);
     ss.delete(rec.name);
-    ss.put(target ? { ...target, cat: target.cat || rec.cat, desc: target.desc || rec.desc } : { ...rec, name: newName });
+    ss.put(target
+      ? { ...target, tags: [...new Set([...target.tags, ...rec.tags])], fav: target.fav || rec.fav, desc: target.desc || rec.desc, rating: target.rating || rec.rating }
+      : { ...rec, name: newName });
   };
   for (const i of issues.filter((x) => x.series === rec.name)) t.objectStore("meta").put({ ...i, series: newName });
   await done(t);
@@ -158,7 +169,7 @@ async function importFile(file) {
       added: Date.now(), readAt: 0, bookmarks: [],
     },
     pages,
-    { desc: info.summary || "", publisher: info.publisher || "", year: info.year || p.year, cat: (info.genre || "").split(",")[0].trim() }
+    { desc: info.summary || "", publisher: info.publisher || "", year: info.year || p.year, tags: splitTags(info.genre) }
   );
 }
 
@@ -202,33 +213,50 @@ function nextUp(list) {
 async function refresh() {
   const [m, s] = await Promise.all([allMeta(), allSeries()]);
   issues = m;
-  seriesMap = new Map(s.map((x) => [x.name, x]));
+  seriesMap = new Map(s.map((x) => [x.name, normSeries(x)]));
   renderLib();
   if (!$("detail").hidden) renderDetail();
 }
 
 /* ============ LIBRARY ============ */
+const FAV = "\u2605fav";
 let filterCat = "", query = "", sortBy = pref.get("sort", "added");
-function renderLib() {
-  const names = [...new Set(issues.map((i) => i.series))];
-  const groups = names.map(group).filter(Boolean);
-  $("count").textContent = groups.length ? `${groups.length} seri · ${issues.length} issue` : "";
-
-  const cats = [...new Set(groups.map((g) => g.s.cat).filter(Boolean))].sort(natural);
-  if (filterCat && !cats.includes(filterCat)) filterCat = "";
-  const chip = (lbl, val) => `<button class="chip${filterCat === val ? " on" : ""}" data-c="${esc(val)}">${esc(lbl)}</button>`;
-  $("cats").innerHTML = cats.length ? chip("Semua", "") + cats.map((c) => chip(c, c)).join("") : "";
-
+const allGroups = () => [...new Set(issues.map((i) => i.series))].map(group).filter(Boolean);
+function tagCounts(groups) {
+  const c = new Map();
+  for (const g of groups) for (const t of g.s.tags) c.set(t, (c.get(t) || 0) + 1);
+  return [...c].sort((a, b) => b[1] - a[1] || natural(a[0], b[0]));
+}
+function visibleGroups(groups = allGroups()) {
   const q = query.trim().toLowerCase();
   const sorter = {
     added: (a, b) => b.added - a.added,
     read: (a, b) => b.readAt - a.readAt || b.added - a.added,
     title: (a, b) => natural(a.s.name, b.s.name),
-  }[sortBy];
-  const list = groups
-    .filter((g) => (!filterCat || g.s.cat === filterCat) &&
-      (!q || g.s.name.toLowerCase().includes(q) || g.s.cat.toLowerCase().includes(q) || g.list.some((i) => (i.name || "").toLowerCase().includes(q))))
+    rating: (a, b) => (b.s.rating || 0) - (a.s.rating || 0) || natural(a.s.name, b.s.name),
+  }[sortBy] || ((a, b) => b.added - a.added);
+  return groups
+    .filter((g) => (!filterCat || (filterCat === FAV ? g.s.fav : g.s.tags.includes(filterCat))) &&
+      (!q || g.s.name.toLowerCase().includes(q) || g.s.tags.some((t) => t.toLowerCase().includes(q)) ||
+        g.list.some((i) => (i.name || "").toLowerCase().includes(q))))
     .sort(sorter);
+}
+function renderLib() {
+  const groups = allGroups();
+  $("count").textContent = groups.length ? `${groups.length} seri · ${issues.length} issue` : "";
+
+  const tags = tagCounts(groups), favs = groups.filter((g) => g.s.fav).length;
+  if (filterCat && (filterCat === FAV ? !favs : !tags.some(([t]) => t === filterCat))) filterCat = "";
+  const chip = (lbl, val, n) =>
+    `<button class="chip${filterCat === val ? " on" : ""}" data-c="${esc(val)}">${lbl}${n ? ` <span class="n">${n}</span>` : ""}</button>`;
+  $("cats").innerHTML = tags.length || favs
+    ? chip("Semua", "") + (favs ? chip('<svg class="ic"><use href="#i-heart"/></svg>Favorit', FAV, favs) : "") +
+      tags.map(([t, n]) => chip(esc(t), t, n)).join("")
+    : "";
+
+  const q = query.trim().toLowerCase();
+  const list = visibleGroups(groups);
+  $("random").hidden = !list.length;
 
   const reading = issues.filter((i) => status(i) === "reading").sort((a, b) => b.readAt - a.readAt).slice(0, 12);
   $("continue").hidden = !reading.length || !!q || !!filterCat;
@@ -242,7 +270,7 @@ function renderLib() {
       </div>
     </button>`).join("");
 
-  $("grid-title").textContent = filterCat || (q ? "Hasil pencarian" : "Koleksi");
+  $("grid-title").textContent = filterCat === FAV ? "Favorit" : filterCat || (q ? "Hasil pencarian" : "Koleksi");
   $("grid-title").hidden = !groups.length;
   $("empty").hidden = groups.length > 0;
   $("nores").hidden = !groups.length || list.length > 0;
@@ -250,11 +278,11 @@ function renderLib() {
     const n = g.list.length, started = g.list.some((i) => i.readAt);
     const badge = g.done === n ? '<span class="badge">SELESAI</span>' : !started ? '<span class="badge new">BARU</span>' : "";
     return `<div class="item" data-series="${esc(g.s.name)}" role="button" tabindex="0">
-      <div class="stack${n > 1 ? " multi" : ""}"><img class="cover" src="${coverUrl(g.cover)}" alt="" loading="lazy"></div>
+      <div class="stack${n > 1 ? " multi" : ""}"><img class="cover" src="${coverUrl(g.cover)}" alt="" loading="lazy">${g.s.fav ? '<span class="fav"><svg><use href="#i-heart"/></svg></span>' : ""}</div>
       ${badge}
       <button class="more" data-more="${esc(g.s.name)}" aria-label="Edit seri"><svg><use href="#i-more"/></svg></button>
       <div class="t">${esc(g.s.name)}</div>
-      <div class="m">${n} issue${g.s.cat ? " · " + esc(g.s.cat) : ""}</div>
+      <div class="m">${n} issue${g.s.rating ? ` · ★${g.s.rating}` : ""}${g.s.tags[0] ? " · " + esc(g.s.tags[0]) : ""}</div>
       ${started && g.done < n ? `<div class="bar"><i style="width:${Math.round((g.done / n) * 100)}%"></i></div>` : ""}
     </div>`;
   }).join("");
@@ -315,6 +343,12 @@ $("grid").addEventListener("touchstart", (e) => {
   if (pressT === null && ev === "touchend") e.preventDefault();
   clearTimeout(pressT);
 }));
+$("random").onclick = () => {
+  const list = visibleGroups();
+  const pool = list.filter((g) => g.done < g.list.length);
+  const pick = (pool.length ? pool : list)[Math.floor(Math.random() * (pool.length || list.length))];
+  if (pick) openDetail(pick.s.name);
+};
 $("sort").onclick = () => {
   for (const b of $("sortmenu").querySelectorAll("[data-s]")) b.classList.toggle("on", b.dataset.s === sortBy);
   $("sortmenu").hidden = false;
@@ -370,7 +404,9 @@ function renderDetail() {
   const up = nextUp(list);
   $("d-read").innerHTML = `<svg><use href="#i-play"/></svg>${esc(up.text)}`;
   $("d-read").onclick = () => openReader(up.issue.id, up.restart ? 0 : undefined);
-  $("d-tags").innerHTML = s.cat ? `<span class="tag">${esc(s.cat)}</span>` : "";
+  $("d-tags").innerHTML = s.tags.map((t) => `<button class="tag" data-tag="${esc(t)}">${esc(t)}</button>`).join("");
+  $("d-fav").classList.toggle("on", s.fav);
+  $("d-fav").setAttribute("aria-label", s.fav ? "Hapus dari favorit" : "Tambah ke favorit");
   $("d-desc").textContent = s.desc || "";
   checkDescMore();
   $("d-issues-title").textContent = `Issue (${list.length})`;
@@ -382,6 +418,22 @@ function checkDescMore() {
 }
 $("d-back").onclick = closeDetail;
 $("d-more").onclick = () => openSeriesSheet(detailName);
+$("d-fav").onclick = async () => {
+  const s = seriesMap.get(detailName) || newSeries(detailName);
+  s.fav = !s.fav;
+  await putSeries(s);
+  await refresh();
+  toast(s.fav ? "Ditambahkan ke favorit" : "Dihapus dari favorit", 1200);
+};
+$("d-tags").onclick = (e) => {
+  const t = e.target.closest("[data-tag]");
+  if (!t) return;
+  filterCat = t.getAttribute("data-tag");
+  query = $("q").value = "";
+  $("q-clear").hidden = true;
+  closeDetail();
+  scrollTo(0, 0);
+};
 $("d-desc-more").onclick = () => { $("d-desc").classList.remove("clamp"); $("d-desc-more").hidden = true; };
 $("d-stars").onclick = async (e) => {
   const b = e.target.closest("[data-r]");
@@ -402,21 +454,42 @@ addEventListener("scroll", () => {
 }, { passive: true });
 
 /* ---------- series sheet ---------- */
-let editing = null;
+let editing = null, editTags = [];
 function openSeriesSheet(name) {
-  editing = seriesMap.get(name) || newSeries(name);
+  editing = normSeries({ ...(seriesMap.get(name) || newSeries(name)) });
+  editTags = [...editing.tags];
   $("sh-title").value = editing.name;
-  $("sh-cat").value = editing.cat || "";
+  $("sh-tag-in").value = "";
   $("sh-desc").value = editing.desc || "";
-  const cats = [...new Set([...seriesMap.values()].map((x) => x.cat).filter(Boolean))].sort(natural);
-  $("sh-chips").innerHTML = cats.map((c) => `<button class="chip" data-c="${esc(c)}">${esc(c)}</button>`).join("");
+  renderTagEdit();
   $("sheet").hidden = false;
 }
+function renderTagEdit() {
+  $("sh-tags").innerHTML = editTags.map((t) =>
+    `<button class="chip on" data-rm="${esc(t)}">${esc(t)}<svg><use href="#i-x"/></svg></button>`).join("");
+  const all = tagCounts(allGroups()).map(([t]) => t).filter((t) => !editTags.includes(t));
+  $("sh-chips").innerHTML = all.map((t) => `<button class="chip" data-c="${esc(t)}">+ ${esc(t)}</button>`).join("");
+}
+function addTags(str) {
+  for (const t of splitTags(str)) if (!editTags.some((x) => x.toLowerCase() === t.toLowerCase())) editTags.push(t);
+  renderTagEdit();
+}
 $("sheet").onclick = (e) => { if (e.target === $("sheet")) $("sheet").hidden = true; };
-$("sh-chips").onclick = (e) => { const c = e.target.closest("[data-c]"); if (c) $("sh-cat").value = c.getAttribute("data-c"); };
+$("sh-chips").onclick = (e) => { const c = e.target.closest("[data-c]"); if (c) addTags(c.getAttribute("data-c")); };
+$("sh-tags").onclick = (e) => {
+  const c = e.target.closest("[data-rm]");
+  if (c) { editTags = editTags.filter((t) => t !== c.getAttribute("data-rm")); renderTagEdit(); }
+};
+$("sh-tag-in").onkeydown = (e) => {
+  if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTags(e.target.value); e.target.value = ""; }
+  else if (e.key === "Backspace" && !e.target.value && editTags.length) { editTags.pop(); renderTagEdit(); }
+};
+$("sh-tag-in").onblur = (e) => { if (e.target.value.trim()) { addTags(e.target.value); e.target.value = ""; } };
 $("sh-save").onclick = async () => {
   const newName = $("sh-title").value.trim() || editing.name;
-  Object.assign(editing, { cat: $("sh-cat").value.trim(), desc: $("sh-desc").value.trim() });
+  addTags($("sh-tag-in").value);
+  $("sh-tag-in").value = "";
+  Object.assign(editing, { tags: [...editTags], desc: $("sh-desc").value.trim() });
   if (newName !== editing.name) {
     await renameSeries(editing, newName);
     if (detailName === editing.name) detailName = newName;

@@ -35,6 +35,20 @@ button:disabled{opacity:.3;pointer-events:none}
 #cats::-webkit-scrollbar,.row-scroll::-webkit-scrollbar{display:none}
 .chip{flex:none;height:34px;padding:0 15px;border-radius:99px;background:var(--card);color:var(--mut);font-size:14px;font-weight:500}
 .chip.on{background:var(--fg);color:var(--bg)}
+.chip{display:inline-flex;align-items:center;gap:6px}
+.chip .n{font-size:12px;opacity:.6;font-variant-numeric:tabular-nums}
+.chip .ic{width:14px;height:14px;fill:currentColor;stroke:none}
+.item .fav{position:absolute;left:6px;bottom:6px;display:grid;place-items:center;width:26px;height:26px;border-radius:50%;background:#000a;color:#ff6b8a}
+.item .fav svg{width:15px;height:15px;fill:currentColor;stroke:none}
+#d-fav.on{color:#ff6b8a}
+#d-fav.on svg{fill:currentColor}
+.tag{cursor:pointer}
+.tagedit{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:var(--bg);border-radius:12px;padding:8px;margin:6px 0 10px}
+.tagedit .chip{height:30px;font-size:13px;padding:0 10px 0 12px}
+.tagedit .chip svg{width:13px;height:13px}
+#sh-tags{display:contents}
+.card .tagedit input{flex:1;min-width:140px;height:30px;margin:0;padding:0 6px;background:none}
+.card label[for]{margin-bottom:0}
 h2{font-size:18px;font-weight:700;margin:22px 0 12px}
 
 .row-scroll{display:flex;gap:12px;overflow-x:auto;margin:0 calc(-1 * var(--pad));padding:0 var(--pad);scroll-snap-type:x mandatory;scrollbar-width:none}

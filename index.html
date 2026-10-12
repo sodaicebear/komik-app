@@ -27,6 +27,8 @@
   <symbol id="i-grid" viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1"/></symbol>
   <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7"/></symbol>
   <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.2l2.7 5.6 6.1.8-4.5 4.2 1.1 6.1L12 17l-5.4 2.9 1.1-6.1-4.5-4.2 6.1-.8z"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-7.5-10.2A4.3 4.3 0 0 1 12 7.6a4.3 4.3 0 0 1 7.5 2.7c0 5.6-7.5 10.2-7.5 10.2z"/></symbol>
+  <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M16 4h4v4M4 20 20 4M20 16v4h-4M14.5 14.5 20 20M4 4l5 5"/></symbol>
   <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></symbol>
 </svg>
 
@@ -38,6 +40,7 @@
       <p id="count"></p>
     </div>
     <div class="actions">
+      <button id="random" class="icon" aria-label="Seri acak" hidden><svg><use href="#i-shuffle"/></svg></button>
       <button id="sort" class="icon" aria-label="Urutkan"><svg><use href="#i-sort"/></svg></button>
       <button id="add" class="icon accent" aria-label="Impor CBZ"><svg><use href="#i-plus"/></svg></button>
     </div>
@@ -47,7 +50,7 @@
   <main id="library">
     <label class="search">
       <svg><use href="#i-search"/></svg>
-      <input id="q" type="search" placeholder="Cari seri atau kategori" autocomplete="off" enterkeyhint="search">
+      <input id="q" type="search" placeholder="Cari seri atau tag" autocomplete="off" enterkeyhint="search">
       <button id="q-clear" class="icon sm" aria-label="Hapus pencarian" hidden><svg><use href="#i-x"/></svg></button>
     </label>
     <nav id="cats"></nav>
@@ -78,6 +81,7 @@
   <div class="dbar">
     <button id="d-back" class="icon" aria-label="Kembali"><svg><use href="#i-back"/></svg></button>
     <span id="d-bartitle"></span>
+    <button id="d-fav" class="icon" aria-label="Tambah ke favorit"><svg><use href="#i-heart"/></svg></button>
     <button id="d-more" class="icon" aria-label="Edit seri"><svg><use href="#i-more"/></svg></button>
   </div>
   <div class="hero">
@@ -133,7 +137,11 @@
     <div class="grab"></div>
     <h3>Edit seri</h3>
     <label>Judul seri <input id="sh-title"></label>
-    <label>Kategori <input id="sh-cat" placeholder="mis. Aksi"></label>
+    <label for="sh-tag-in">Tag</label>
+    <div class="tagedit">
+      <div id="sh-tags"></div>
+      <input id="sh-tag-in" placeholder="Tambah tag…" enterkeyhint="done" autocomplete="off">
+    </div>
     <div id="sh-chips"></div>
     <label>Sinopsis <textarea id="sh-desc" rows="4" placeholder="Opsional"></textarea></label>
     <div class="row">
@@ -159,6 +167,7 @@
     <button data-s="added">Baru ditambahkan</button>
     <button data-s="read">Terakhir dibaca</button>
     <button data-s="title">Judul A–Z</button>
+    <button data-s="rating">Rating tertinggi</button>
   </div>
 </div>
 
